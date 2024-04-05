@@ -1,0 +1,55 @@
+{
+  "name": "cap-js-mockdata",
+  "version": "0.0.1",
+  "description": "SAP CAP plugin to validate incoming API requests.",
+  "author": "Mauricio Lauffer",
+  "license": "MIT",
+  "homepage": "https://github.com/mauriciolauffer/cap-js-mockdata#readme",
+  "main": "cds-plugin.js",
+  "files": [
+    "cds-plugin.js"
+  ],
+  "keywords": [
+    "sap",
+    "cap",
+    "cds",
+    "sap-cap",
+    "cap-js",
+    "nodejs",
+    "plugin",
+    "validator",
+    "validation"
+  ],
+  "workspaces": [
+    ".",
+    "examples/*"
+  ],
+  "scripts": {
+    "lint": "eslint . --cache",
+    "lint:ci": "eslint . -f @microsoft/eslint-formatter-sarif -o eslint.sarif",
+    "test": "vitest --coverage",
+    "test:ci": "vitest run"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^8.4.1"
+  },
+  "devDependencies": {
+    "@sap/eslint-plugin-cds": "^2.6.7",
+    "@types/node": "^20.12.4",
+    "@vitest/coverage-v8": "^1.4.0",
+    "eslint": "^8.57.0",
+    "eslint-config-mlauffer-nodejs": "^1.4.6",
+    "supertest": "^6.3.4",
+    "vitest": "^1.2.2"
+  },
+  "peerDependencies": {
+    "@sap/cds": "^7.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mauriciolauffer/cap-js-mockdata.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mauriciolauffer/cap-js-mockdata/issues"
+  }
+}
