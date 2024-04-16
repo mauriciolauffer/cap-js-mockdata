@@ -2,10 +2,11 @@
   "name": "cap-app",
   "private": true,
   "scripts": {
-    "start": "cds-serve"
+    "start": "cds-serve",
+    "add": "cds add mockdata"
   },
   "dependencies": {
-    "@sap/cds": "^7.8.0",
+    "@sap/cds": "^7.8.1",
     "cap-js-mockdata": "^0.0.1"
   },
   "devDependencies": {

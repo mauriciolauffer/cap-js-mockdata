@@ -1,62 +1,60 @@
 'use strict';
 
-// const fs = require('node:fs');
-const {access} = require('node:fs/promises');
+const {access, writeFile, mkdir} = require('node:fs/promises');
 const {resolve, join, relative} = require('node:path');
+const {faker} = require('@faker-js/faker');
+const {json2csv} = require('json-2-csv');
 const cds = require('@sap/cds');
 const logger = cds.log('mockdata-plugin');
 const regxpAnnotationTag = new RegExp(`^@Mockdata.`);
-const {exists, fs} = cds.utils;
-// const faker = require('@faker-js/faker');
-const {faker} = require('@faker-js/faker');
-
+const TOTAL_ROWS = 50;
 let mockdataPlugin = null;
+
 if (cds?.add?.Plugin && cds.add?.register) {
   mockdataPlugin = class MockdataTemplate extends cds.add.Plugin {
-    requires() {
-      // return ['data'];
-    }
-
     async run() {
-      console.log(222222222);
       const dest = resolve(cds.root, await getDefaultTargetFolder(cds.env));
       // const {force} = cds.cli.options;
       const force = true;
       let csn = await cds.compile(cds.env.roots, {min: true});
       includeExternalEntities(csn);
-      const csnSQL = cds.compile.for.sql(csn, {names: cds.env.sql.names}); // CSN w/ persistence information
-      const csnOdata = cds.compile.for.odata(csn);
-      const csnx1 = cds.compile.to.sql(csn);
-      const csnx2 = JSON.parse(cds.compile.to.json(csn));
       csn = cds.reflect(csn); // reflected model (adds additional helper functions)
-      csn.all('entity')
-          .filter((entity) => !entity.query) // exclude entities with queries (projection on, select from ...)
-          .filter((entity) => !entity.query) // exclude entities with queries (projection on, select from ...)
-          .filter((entity) => entity.name !== 'DRAFT.DraftAdministrativeData' && !entity.name.endsWith('.drafts')) // exclude draft stuff
-          .filter((entity) => hasAnnotatedElement(entity.elements))
-          .forEach((entity) => processEntity(entity, dest, csnSQL, force));
-      console.log(99999999);
+      const csnSQL = cds.compile.for.sql(csn, {names: cds.env.sql.names}); // CSN w/ persistence information
+      for (const entity of csn.entities) {
+        if (entity.query) {
+          continue;
+        }
+        if (entity.name === 'DRAFT.DraftAdministrativeData' && entity.name.endsWith('.drafts')) {
+          continue;
+        }
+        if (entity.name.endsWith('.texts')) {
+          // continue;
+        }
+        if (!entity.name.includes('TestingLocalized')) {
+          continue;
+        }
+        console.log(entity.name);
+        await processEntity(entity, dest, csnSQL, force);
+      }
     }
   };
 
   cds.add.register('mockdata', mockdataPlugin);
+  module.exports = mockdataPlugin;
 }
 
 /**
- *
- * @param {cds.env} env
+ * Check whether file/folder can be accessed
+ * @param {string} path
+ * @returns {boolean}
  */
-async function getDefaultTargetFolder(env) {
-  const {db} = env.folders;
-  // csv files should be located in the 'db/data' folder unless a 'db/csv' folder already exists
-  let path = join(db, 'csv');
+async function hasAccess(path) {
   try {
     await access(path);
+    return true;
   } catch (err) {
-    path = join(db, 'data');
+    return false;
   }
-  return path;
-  // return join(db, exists(join(db, 'csv')) ? 'csv' : 'data');
 }
 
 /**
@@ -65,8 +63,8 @@ async function getDefaultTargetFolder(env) {
  * @returns {boolean}
  */
 function hasAnnotatedElement(entityElements) {
-  for (const [key, elementProperties] of Object.entries(entityElements)) {
-    if (isElementAnnotated(elementProperties)) {
+  for (const [key, element] of Object.entries(entityElements)) {
+    if (isElementAnnotated(element)) {
       logger.debug('Annotation found in:', key);
       return true;
     }
@@ -76,12 +74,12 @@ function hasAnnotatedElement(entityElements) {
 
 /**
  * Check whether entity element is annotated
- * @param {object} elementProperties
+ * @param {object} element
  * @returns {boolean}
  */
-function isElementAnnotated(elementProperties) {
-  for (const key of Object.keys(elementProperties)) {
-    if (regxpAnnotationTag.test(key)) {
+function isElementAnnotated(element) {
+  for (const key of Object.keys(element)) {
+    if (isValidAnnotation(key)) {
       return true;
     }
   }
@@ -89,181 +87,286 @@ function isElementAnnotated(elementProperties) {
 }
 
 /**
- *
- * @param csn
+ * Check whether property is a valid annotation
+ * @param {string} property
+ * @returns {boolean}
+ */
+function isValidAnnotation(property) {
+  return regxpAnnotationTag.test(property);
+}
+
+/**
+ * Generate mock data based on the CDS data type
+ * @param {string} cdsType
+ * @param {number} length
+ * @returns {any}
+ */
+function generateDataByType(cdsType, length) {
+  let data;
+  const maxLength = length || 255;
+  switch (cdsType) {
+    case 'cds.UUID':
+      data = faker.string.uuid();
+      break;
+    case 'cds.Boolean':
+      data = faker.datatype.boolean();
+      break;
+    case 'cds.UInt8':
+      data = faker.number.int({min: 0, max: 255});
+      break;
+    case 'cds.Int16':
+      data = faker.number.int({min: -32768, max: 32767});
+      break;
+    case 'cds.Int32':
+      data = faker.number.int();
+      break;
+    case 'cds.Integer':
+      data = faker.number.int();
+      break;
+    case 'cds.Int64':
+      data = faker.number.bigInt();
+      break;
+    case 'cds.Integer64':
+      data = faker.number.bigInt();
+      break;
+    case 'cds.Decimal':
+      data = faker.number.float();
+      break;
+    case 'cds.Double':
+      data = faker.number.float();
+      break;
+    case 'cds.Date':
+      data = faker.date.anytime();
+      break;
+    case 'cds.Time':
+      data = faker.date.anytime();
+      break;
+    case 'cds.DateTime':
+      data = faker.date.anytime();
+      break;
+    case 'cds.Timestamp':
+      data = faker.date.anytime();
+      break;
+    case 'cds.String':
+      data = faker.lorem.words().substring(0, maxLength - 1);
+      break;
+    case 'cds.Binary':
+      data = faker.string.binary({length: {max: maxLength}});
+      break;
+    case 'cds.LargeBinary':
+      data = faker.string.binary({length: {max: maxLength}});
+      break;
+    case 'cds.LargeString':
+      data = faker.lorem.words(20).substring(0, maxLength - 1);
+      break;
+    default:
+      data = faker.lorem.words().substring(0, maxLength - 1);
+      break;
+  }
+  return data;
+}
+
+function buildFakerMethodByType(cdsType, length) {
+  const maxLength = length || 255;
+  switch (cdsType) {
+    case 'cds.UUID':
+      return faker.string.uuid();
+    case 'cds.Boolean':
+      return faker.datatype.boolean();
+    case 'cds.UInt8':
+      return faker.number.int({min: 0, max: 255});
+    case 'cds.Int16':
+      return faker.number.int({min: -32768, max: 32767});
+    case 'cds.Int32':
+      return faker.number.int();
+    case 'cds.Integer':
+      return faker.number.int();
+    case 'cds.Int64':
+      return faker.number.bigInt();
+    case 'cds.Integer64':
+      return faker.number.bigInt();
+    case 'cds.Decimal':
+      return faker.number.float();
+    case 'cds.Double':
+      return faker.number.float();
+    case 'cds.Date':
+      return faker.date.anytime();
+    case 'cds.Time':
+      return faker.date.anytime();
+    case 'cds.DateTime':
+      return faker.date.anytime();
+    case 'cds.Timestamp':
+      return faker.date.anytime();
+    case 'cds.String':
+      return faker.lorem.words().substring(0, maxLength - 1);
+    case 'cds.Binary':
+      return faker.string.binary({length: {max: maxLength}});
+    case 'cds.LargeBinary':
+      return faker.string.binary({length: {max: maxLength}});
+    case 'cds.LargeString':
+      return faker.lorem.words(20).substring(0, maxLength - 1);
+    case 'User':
+      return faker.internet.userName().substring(0, maxLength - 1);
+    default:
+      return faker.lorem.words().substring(0, maxLength - 1);
+  }
+}
+
+/**
+ * Build the Faker method to be used
+ * @param {cds.entity} element
+ * @returns {object}
+ */
+function buildFakerMethod(element) {
+  let obj = '';
+  let method = '';
+  const properties = Object.entries(element);
+  for (const [key, value] of properties) {
+    if (isValidAnnotation(key)) {
+      obj = key.split('.')[1];
+      method = value;
+      break;
+    }
+  }
+  return faker[obj]?.[method];
+}
+function getFakerMethodNEW(element) {
+  const method = buildFakerMethodByAnnotation(element);
+  return method ? method() : buildFakerMethodByType(element.type, element.length);
+}
+function buildFakerMethodByAnnotation(element) {
+  let obj = '';
+  let method = '';
+  const properties = Object.entries(element);
+  for (const [key, value] of properties) {
+    if (isValidAnnotation(key)) {
+      obj = key.split('.')[1];
+      method = value;
+      break;
+    }
+  }
+  return faker[obj]?.[method];
+}
+
+/**
+ * Include extenal entities
+ * @param {object} csn
+ * @returns {object}
  */
 function includeExternalEntities(csn) {
-  for (const each in csn.definitions) {
-    const def = csn.definitions[each];
-    if (def['@cds.persistence.skip'] === true) {
-      DEBUG?.('Including skipped entity ' + each);
-      delete def['@cds.persistence.skip'];
+  for (const [key, definition] of Object.entries(csn.definitions)) {
+    if (definition['@cds.persistence.skip'] === true) {
+      logger.info('Including skipped entity ' + key);
+      delete definition['@cds.persistence.skip'];
     }
   }
   return csn;
 }
 
 /**
- *
- * @param spec
+ * Process CDS Entity to generate mock data
+ * @param {cds.entity} entity
+ * @param {string} dest
+ * @param {cds.link} csnSQL
+ * @param {boolean} force
  */
-function asRegex(spec) {
-  if (typeof spec === 'string') {
-    try {
-      if (spec.match(/[\^$|*]/)) {
-        return new RegExp(spec);
-      } else { // no meta chars -> prefix semantics
-        spec = spec.replace(/\./g, '\\.'); // escape dot
-        return new RegExp('^' + spec + '.*');
-      }
-    } catch (err) {
-      throw err.message; // user error, so cut off stack trace
-    }
-  }
-  return /.*/;
-}
-
-/**
- *
- * @param entity
- * @param dest
- * @param csnSQL
- * @param force
- */
-function processEntity(entity, dest, csnSQL, force) {
-  console.log(444444444);
-  // return;
-  let dataFileName;
+async function processEntity(entity, dest, csnSQL, force) {
+  let dataFileName = '';
   const namespace = getNamespace(csnSQL, entity.name);
-  if (!namespace || namespace == entity.name) {
+  if (!namespace || namespace === entity.name) {
     dataFileName = `${entity.name}.csv`;
   } else {
     const entityName = entity.name.replace(namespace + '.', '');
     dataFileName = `${namespace}-${entityName}.csv`;
   }
-
-  if (entity.name.endsWith('.texts')) {
-    // handle '.texts' entities (for localized elements) differently:
-    // if there is already file exist with '_texts' (old cds versions) - overwrite this one (when --force is used)
-    // otherwise use the new '.texts' format
-    const dataFileNameOldFormat = dataFileName.replace('.texts.csv', '_texts.csv');
-    const dataFilePathOldFormat = join(dest, dataFileNameOldFormat);
-    if (exists(dataFilePathOldFormat)) {
-      createDataFile(true, dataFilePathOldFormat, dest, force, entity);
-      return;
-    }
-  }
-
   const dataFilePath = join(dest, dataFileName);
-  // createDataFile(exists(dataFilePath), dataFilePath, dest, force, entity);
-  createDataFile(exists(dataFilePath), dataFilePath, dest, force, entity, csnSQL.definitions[entity.name]);
+  const data = prepareDataFileContent(entity, csnSQL.definitions[entity.name]);
+  await createDataFile(dataFilePath, dest, force, data);
 }
 
 /**
- *
- * @param env
+ * Get the default folder to save the generated files
+ * @param {cds.env} env
+ * @returns {string}
  */
-function getDefaultTargetFolderxxx(env) {
+async function getDefaultTargetFolder(env) {
   const {db} = env.folders;
   // csv files should be located in the 'db/data' folder unless a 'db/csv' folder already exists
-  return join(db, exists(join(db, 'csv')) ? 'csv' : 'data');
+  return join(db, await hasAccess(join(db, 'csv')) ? 'csv' : 'data');
 }
 
-
 /**
- *
- * @param isFileExists
- * @param dataFilePath
- * @param dest
- * @param force
- * @param entity
- * @param entitySql
+ * Create CSV files with mock data
+ * @param {string} filename
+ * @param {string} dest
+ * @param {boolean} force
+ * @param {string} dataFileContent
  */
-function createDataFile(isFileExists, dataFilePath, dest, force, entity, entitySql) {
-  let relFilePath = dataFilePath;
-  if (dataFilePath.indexOf(cds.root) === 0) {
+async function createDataFile(filename, dest, force, dataFileContent) {
+  let relativeFilePath = filename;
+  const isFileExists = hasAccess(filename);
+  if (filename.indexOf(cds.root) === 0) {
     // use relative path in log (for readability), only when data files are added within the project
     // (potentially can be located anywhere using the --out parameter)
-    relFilePath = relative(cds.root, dataFilePath);
+    relativeFilePath = relative(cds.root, filename);
   }
   if (isFileExists && !force) {
-    console.log(`Skipping ${relFilePath}`);
+    logger.info(`Skipping ${relativeFilePath}`);
   } else {
     // continue only if file not already exists, or '--force' option provided
-    const dataFileContent = prepareDataFileContent(entitySql);
-    const dataFileContentx1 = prepareDataFileContentx1(entity, entitySql);
     if (dataFileContent && dataFileContent.length) {
-      if (!exists(dest)) fs.mkdirSync(dest, {recursive: true});
-      fs.writeFileSync(dataFilePath, dataFileContent);
-      isFileExists ? console.log(`Overwriting ` + relFilePath) : console.log(`Creating ` + relFilePath);
+      if (!await hasAccess(dest)) {
+        await mkdir(dest, {recursive: true});
+      }
+      await writeFile(filename, dataFileContent);
+      isFileExists ? logger.info(`Overwriting ${relativeFilePath}`) : logger.info(`Creating ${relativeFilePath}`);
     }
   }
 }
 
 /**
- *
- * @param entity
+ * Generate mock data to populate CSV file
+ * @param {cds.entity} entity
+ * @param {cds.entity} entitySql
+ * @returns {string}
  */
-function prepareDataFileContent(entity) {
-  const persistenceKeyNames = Object.keys(entity.keys || []);
-  return Object.entries(entity.elements)
-      .filter(([, element]) => !(element instanceof cds.Association)) // exclude associations+compositions
-      .filter(([, element]) => !!element['@cds.persistence.name']) // exclude no-persistence elements, e.g. virtual ones
-      .map(([key]) => key)
-      .sort((k1, k2) => { // sort with keys first
-        if (persistenceKeyNames.includes(k1) && !persistenceKeyNames.includes(k2)) return -1;
-        if (!persistenceKeyNames.includes(k1) && persistenceKeyNames.includes(k2)) return 1;
-        return 0; // preserve original order otherwise
-      })
-      .join(','); // using comma as csv separator by default
+function prepareDataFileContent(entity, entitySql) {
+  const data = []; // [...Array(TOTAL_ROWS).keys()];
+  for (const [key, element] of Object.entries(entitySql.elements)) {
+    if (!element['@cds.persistence.name']) {
+      continue;
+    }
+    if (element instanceof cds.Association /* || element instanceof cds.Composition */) {
+      //continue;
+    }
+    /* if (element.type === 'cds.Association' || element.type === 'cds.Composition') {
+      continue;
+    } */
+    const entityElement = entity.elements[key];
+    if (!entityElement) {
+      continue;
+    }
+    let localdataNEW = [];
+    if (entityElement.key) {
+      localdataNEW = faker.helpers.uniqueArray(() => getFakerMethodNEW(entityElement), TOTAL_ROWS);
+    } else {
+      localdataNEW = faker.helpers.multiple(() => getFakerMethodNEW(entityElement), {count: TOTAL_ROWS});
+    }
+    for (let i = 0; i < TOTAL_ROWS; i++) {
+      if (!data[i]) {
+        data[i] = {};
+      }
+      data[i][key] = localdataNEW[i];
+    }
+  }
+  return json2csv(data);
 }
 
 /**
- *
- * @param entity
- * @param entitySql
- */
-function prepareDataFileContentx1(entity, entitySql) {
-  const data = [];
-  const persistenceKeyNames = Object.keys(entitySql.keys || []);
-  return Object.entries(entitySql.elements)
-      .filter(([, element]) => { // exclude associations+compositions
-        return !(element instanceof cds.Association);
-      })
-      .filter(([, element]) => { // exclude no-persistence elements, e.g. virtual ones
-        return !!element['@cds.persistence.name'];
-      })
-      .map(([key]) => {
-        return key;
-      })
-      .sort((k1, k2) => { // sort with keys first
-        if (persistenceKeyNames.includes(k1) && !persistenceKeyNames.includes(k2)) return -1;
-        if (!persistenceKeyNames.includes(k1) && persistenceKeyNames.includes(k2)) return 1;
-        return 0; // preserve original order otherwise
-      })
-      .map((key) => {
-        data[key] = [];
-        const fieldData = [];
-        let fakerMethod = {};
-        if (isElementAnnotated(entity.elements[key])) {
-          fakerMethod = faker.person.sex;
-        } else {
-          fakerMethod = faker.person.fullName;
-        }
-        for (let i = 0; i < 50; i++) {
-          fieldData.push(fakerMethod());
-        }
-        data[key] = [...fieldData];
-        return key;
-      }) // exclude no-persistence elements, e.g. virtual ones
-      .join(','); // using comma as csv separator by default
-}
-
-// Logic is taken from cds-compile
-/**
- *
- * @param csn
- * @param artifactName
+ * Get entity namespace
+ * @param {object} csn
+ * @param {string} artifactName
+ * @returns {string}
  */
 function getNamespace(csn, artifactName) {
   const parts = artifactName.split('.');
@@ -276,8 +379,8 @@ function getNamespace(csn, artifactName) {
     return null;
   }
 
-
-  for (let i = 1; i < parts.length; i++) {
+  const length = parts.length;
+  for (let i = 1; i < length; i++) {
     // This was definitely a namespace so far
     const previousArtifactName = seen;
     seen = `${seen}.${parts[i]}`;
@@ -291,5 +394,4 @@ function getNamespace(csn, artifactName) {
   return artifactName;
 }
 
-
-module.exports = mockdataPlugin;
+// module.exports = mockdataPlugin;

@@ -31,19 +31,20 @@
     "test:ci": "vitest run"
   },
   "dependencies": {
-    "@faker-js/faker": "^8.4.1"
+    "@faker-js/faker": "^8.4.1",
+    "json-2-csv": "^5.5.1"
   },
   "devDependencies": {
-    "@sap/eslint-plugin-cds": "^2.6.7",
-    "@types/node": "^20.12.4",
-    "@vitest/coverage-v8": "^1.4.0",
+    "@sap/eslint-plugin-cds": "^2.7.0",
+    "@types/node": "^20.12.7",
+    "@vitest/coverage-v8": "^1.5.0",
     "eslint": "^8.57.0",
     "eslint-config-mlauffer-nodejs": "^1.4.6",
     "supertest": "^6.3.4",
     "vitest": "^1.2.2"
   },
   "peerDependencies": {
-    "@sap/cds": "^7.8.0"
+    "@sap/cds": "^7.8.1"
   },
   "repository": {
     "type": "git",
