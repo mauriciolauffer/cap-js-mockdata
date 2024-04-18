@@ -21,6 +21,7 @@ if (cds?.add?.Plugin && cds.add?.register) {
       csn = cds.reflect(csn); // reflected model (adds additional helper functions)
       const csnSQL = cds.compile.for.sql(csn, {names: cds.env.sql.names}); // CSN w/ persistence information
       for (const entity of csn.entities) {
+        console.log(entity.name);
         if (entity.query) {
           continue;
         }
@@ -28,12 +29,17 @@ if (cds?.add?.Plugin && cds.add?.register) {
           continue;
         }
         if (entity.name.endsWith('.texts')) {
-          // continue;
-        }
-        if (!entity.name.includes('TestingLocalized')) {
           continue;
         }
-        console.log(entity.name);
+        if (entity.associations || entity.compositions) {
+          // continue;
+        }
+        if (entity.drafts) {
+          // continue;
+        }
+        if (!entity.name.includes('TestingAssociation')) {
+          // continue;
+        }
         await processEntity(entity, dest, csnSQL, force);
       }
     }
@@ -58,35 +64,6 @@ async function hasAccess(path) {
 }
 
 /**
- * Check whether entity has annotated elements
- * @param {object} entityElements
- * @returns {boolean}
- */
-function hasAnnotatedElement(entityElements) {
-  for (const [key, element] of Object.entries(entityElements)) {
-    if (isElementAnnotated(element)) {
-      logger.debug('Annotation found in:', key);
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Check whether entity element is annotated
- * @param {object} element
- * @returns {boolean}
- */
-function isElementAnnotated(element) {
-  for (const key of Object.keys(element)) {
-    if (isValidAnnotation(key)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
  * Check whether property is a valid annotation
  * @param {string} property
  * @returns {boolean}
@@ -96,76 +73,21 @@ function isValidAnnotation(property) {
 }
 
 /**
- * Generate mock data based on the CDS data type
+ * Get the Faker method to be used
+ * @param {cds.entity} element
+ * @returns {any}
+ */
+function getFakerMethod(element) {
+  const method = buildFakerMethodByAnnotation(element);
+  return method ? method() : buildFakerMethodByType(element.type, element.length);
+}
+
+/**
+ * Build the Faker method using CDS annotations
  * @param {string} cdsType
  * @param {number} length
  * @returns {any}
  */
-function generateDataByType(cdsType, length) {
-  let data;
-  const maxLength = length || 255;
-  switch (cdsType) {
-    case 'cds.UUID':
-      data = faker.string.uuid();
-      break;
-    case 'cds.Boolean':
-      data = faker.datatype.boolean();
-      break;
-    case 'cds.UInt8':
-      data = faker.number.int({min: 0, max: 255});
-      break;
-    case 'cds.Int16':
-      data = faker.number.int({min: -32768, max: 32767});
-      break;
-    case 'cds.Int32':
-      data = faker.number.int();
-      break;
-    case 'cds.Integer':
-      data = faker.number.int();
-      break;
-    case 'cds.Int64':
-      data = faker.number.bigInt();
-      break;
-    case 'cds.Integer64':
-      data = faker.number.bigInt();
-      break;
-    case 'cds.Decimal':
-      data = faker.number.float();
-      break;
-    case 'cds.Double':
-      data = faker.number.float();
-      break;
-    case 'cds.Date':
-      data = faker.date.anytime();
-      break;
-    case 'cds.Time':
-      data = faker.date.anytime();
-      break;
-    case 'cds.DateTime':
-      data = faker.date.anytime();
-      break;
-    case 'cds.Timestamp':
-      data = faker.date.anytime();
-      break;
-    case 'cds.String':
-      data = faker.lorem.words().substring(0, maxLength - 1);
-      break;
-    case 'cds.Binary':
-      data = faker.string.binary({length: {max: maxLength}});
-      break;
-    case 'cds.LargeBinary':
-      data = faker.string.binary({length: {max: maxLength}});
-      break;
-    case 'cds.LargeString':
-      data = faker.lorem.words(20).substring(0, maxLength - 1);
-      break;
-    default:
-      data = faker.lorem.words().substring(0, maxLength - 1);
-      break;
-  }
-  return data;
-}
-
 function buildFakerMethodByType(cdsType, length) {
   const maxLength = length || 255;
   switch (cdsType) {
@@ -213,27 +135,10 @@ function buildFakerMethodByType(cdsType, length) {
 }
 
 /**
- * Build the Faker method to be used
+ * Build the Faker method using CDS annotations
  * @param {cds.entity} element
  * @returns {object}
  */
-function buildFakerMethod(element) {
-  let obj = '';
-  let method = '';
-  const properties = Object.entries(element);
-  for (const [key, value] of properties) {
-    if (isValidAnnotation(key)) {
-      obj = key.split('.')[1];
-      method = value;
-      break;
-    }
-  }
-  return faker[obj]?.[method];
-}
-function getFakerMethodNEW(element) {
-  const method = buildFakerMethodByAnnotation(element);
-  return method ? method() : buildFakerMethodByType(element.type, element.length);
-}
 function buildFakerMethodByAnnotation(element) {
   let obj = '';
   let method = '';
@@ -331,35 +236,39 @@ async function createDataFile(filename, dest, force, dataFileContent) {
  * @returns {string}
  */
 function prepareDataFileContent(entity, entitySql) {
-  const data = []; // [...Array(TOTAL_ROWS).keys()];
+  const data = [];
   for (const [key, element] of Object.entries(entitySql.elements)) {
-    if (!element['@cds.persistence.name']) {
-      continue;
-    }
-    if (element instanceof cds.Association /* || element instanceof cds.Composition */) {
-      //continue;
-    }
-    /* if (element.type === 'cds.Association' || element.type === 'cds.Composition') {
-      continue;
-    } */
-    const entityElement = entity.elements[key];
+    let entityElement = entity.elements[key];
     if (!entityElement) {
       continue;
     }
-    let localdataNEW = [];
-    if (entityElement.key) {
-      localdataNEW = faker.helpers.uniqueArray(() => getFakerMethodNEW(entityElement), TOTAL_ROWS);
-    } else {
-      localdataNEW = faker.helpers.multiple(() => getFakerMethodNEW(entityElement), {count: TOTAL_ROWS});
+    if (!element?.['@cds.persistence.name']) {
+      continue;
     }
+    if (element.type === 'cds.Association' || element.type === 'cds.Composition') {
+      continue;
+      entityElement = entityElement.foreignKeys[element.keys[0]['as']];
+    }
+    console.log(key, entityElement.name);
+    const localdata = generateData(entityElement);
     for (let i = 0; i < TOTAL_ROWS; i++) {
       if (!data[i]) {
         data[i] = {};
       }
-      data[i][key] = localdataNEW[i];
+      data[i][key] = localdata[i];
     }
   }
   return json2csv(data);
+}
+
+function generateData(entityElement) {
+  let localdata = [];
+  if (entityElement.key) {
+    localdata = faker.helpers.uniqueArray(() => getFakerMethod(entityElement), TOTAL_ROWS);
+  } else {
+    localdata = faker.helpers.multiple(() => getFakerMethod(entityElement), {count: TOTAL_ROWS});
+  }
+  return localdata;
 }
 
 /**
