@@ -1,7 +1,7 @@
 {
   "name": "cap-js-mockdata",
   "version": "0.0.1",
-  "description": "SAP CAP plugin to validate incoming API requests.",
+  "description": "SAP CAP plugin to generate mock data.",
   "author": "Mauricio Lauffer",
   "license": "MIT",
   "homepage": "https://github.com/mauriciolauffer/cap-js-mockdata#readme",
@@ -17,8 +17,8 @@
     "cap-js",
     "nodejs",
     "plugin",
-    "validator",
-    "validation"
+    "mockdata",
+    "data"
   ],
   "workspaces": [
     ".",
