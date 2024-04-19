@@ -9,23 +9,33 @@ using {
 
 // Adding fields from @sap/cds/common to all entities to have extra fields/annotations in the mix
 
-entity Customers : cuid, managed {
-  name               : String;
-  sex                : String;
-  virtual vSomething : String;
+entity TestingAnnotation : cuid, managed {
+  name       : String;
+  sex        : String;
+  creditCard : String;
+  phone      : String;
+  ipAddress  : String;
+  email      : String;
+  street     : String;
+  country    : String;
 };
 
 entity TestingNoAnnotation : cuid, managed {
   extra : String;
 };
 
+entity TestingVirtual : cuid, CodeList {
+  extra                : String;
+  virtual extraVirtual : String;
+};
+
 entity TestingDraft : cuid, managed {
   extra : String;
 };
 
-/* entity TestingLocalized : cuid, Countries {
+entity TestingLocalized : cuid, Countries {
   extra : String;
-}; */
+};
 
 entity TestingAssociation : cuid {
   extra      : String;
@@ -55,7 +65,7 @@ entity TestingCdsTypes {
 
 entity TestingEnum : cuid {
   extra : String enum {
-    LOW = 'LOW';
+    LOW  = 'LOW';
     HIGH = 'HIGH';
   };
 };

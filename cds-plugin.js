@@ -13,40 +13,70 @@ let mockdataPlugin = null;
 if (cds?.add?.Plugin && cds.add?.register) {
   mockdataPlugin = class MockdataTemplate extends cds.add.Plugin {
     async run() {
-      const dest = resolve(cds.root, await getDefaultTargetFolder(cds.env));
-      // const {force} = cds.cli.options;
-      const force = true;
-      let csn = await cds.compile(cds.env.roots, {min: true});
-      includeExternalEntities(csn);
-      csn = cds.reflect(csn); // reflected model (adds additional helper functions)
-      const csnSQL = cds.compile.for.sql(csn, {names: cds.env.sql.names}); // CSN w/ persistence information
+      const csn = await getCsn();
+      const csnSQL = cds.compile.for.sql(csn, {names: cds.env.sql.names}); // CSN with persistence information
       for (const entity of csn.entities) {
-        console.log(entity.name);
-        if (entity.query) {
+        if (!isEntitySupported(entity)) {
           continue;
         }
-        if (entity.name === 'DRAFT.DraftAdministrativeData' && entity.name.endsWith('.drafts')) {
-          continue;
-        }
-        if (entity.name.endsWith('.texts')) {
-          continue;
-        }
-        if (entity.associations || entity.compositions) {
-          // continue;
-        }
-        if (entity.drafts) {
-          // continue;
-        }
-        if (!entity.name.includes('TestingAssociation')) {
-          // continue;
-        }
-        await processEntity(entity, dest, csnSQL, force);
+        await processEntity(entity, csnSQL);
       }
     }
   };
 
   cds.add.register('mockdata', mockdataPlugin);
   module.exports = mockdataPlugin;
+}
+
+/**
+ * Get CSN
+ * @returns {object}
+ */
+async function getCsn() {
+  let csn = await cds.compile(cds.env.roots, {min: true});
+  csn = includeExternalEntities(csn);
+  return cds.reflect(csn); // reflected model (adds additional helper functions)
+}
+
+/**
+ * Determine whether the entity is supported or not
+ * @param {cds.entity} entity
+ * @returns {boolean}
+ */
+function isEntitySupported(entity) {
+  if (entity.query) { // Only database tables
+    return false;
+  }
+  if (entity.name === 'DRAFT.DraftAdministrativeData' && entity.name.endsWith('.drafts')) { // No drafts
+    return false;
+  }
+  if (entity.drafts) { // No drafts
+    return false;
+  }
+  if (entity.name.endsWith('.texts')) { // No localized texts
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Determine whether the entity element is supported or not
+ * @param {cds.entity} element
+ * @param {cds.entity} elementSql
+ * @returns {boolean}
+ */
+function isElementSupported(element, elementSql) {
+  if (!element) { // No empty elements
+    return false;
+  }
+  if (!elementSql?.['@cds.persistence.name']) { // Only fields persisted in database tables
+    return false;
+  }
+  if (element.type === 'cds.Association' || element.type === 'cds.Composition') { // No Association nor Composition fields
+    return false;
+    // entityElement = entityElement.foreignKeys[element.keys[0]['as']];
+  }
+  return true;
 }
 
 /**
@@ -171,22 +201,14 @@ function includeExternalEntities(csn) {
 /**
  * Process CDS Entity to generate mock data
  * @param {cds.entity} entity
- * @param {string} dest
  * @param {cds.link} csnSQL
- * @param {boolean} force
  */
-async function processEntity(entity, dest, csnSQL, force) {
-  let dataFileName = '';
+async function processEntity(entity, csnSQL) {
   const namespace = getNamespace(csnSQL, entity.name);
-  if (!namespace || namespace === entity.name) {
-    dataFileName = `${entity.name}.csv`;
-  } else {
-    const entityName = entity.name.replace(namespace + '.', '');
-    dataFileName = `${namespace}-${entityName}.csv`;
-  }
-  const dataFilePath = join(dest, dataFileName);
+  const path = await getDefaultTargetFolder(cds.env);
+  const dataFilePath = getFilename(entity, namespace, path);
   const data = prepareDataFileContent(entity, csnSQL.definitions[entity.name]);
-  await createDataFile(dataFilePath, dest, force, data);
+  await createDataFile(dataFilePath, path, data);
 }
 
 /**
@@ -197,19 +219,20 @@ async function processEntity(entity, dest, csnSQL, force) {
 async function getDefaultTargetFolder(env) {
   const {db} = env.folders;
   // csv files should be located in the 'db/data' folder unless a 'db/csv' folder already exists
-  return join(db, await hasAccess(join(db, 'csv')) ? 'csv' : 'data');
+  const path = join(db, await hasAccess(join(db, 'csv')) ? 'csv' : 'data');
+  return resolve(cds.root, path);
 }
 
 /**
  * Create CSV files with mock data
  * @param {string} filename
- * @param {string} dest
- * @param {boolean} force
+ * @param {string} path
  * @param {string} dataFileContent
  */
-async function createDataFile(filename, dest, force, dataFileContent) {
+async function createDataFile(filename, path, dataFileContent) {
   let relativeFilePath = filename;
-  const isFileExists = hasAccess(filename);
+  const isFileExists = await hasAccess(filename);
+  const {force} = cds.cli.options;
   if (filename.indexOf(cds.root) === 0) {
     // use relative path in log (for readability), only when data files are added within the project
     // (potentially can be located anywhere using the --out parameter)
@@ -217,11 +240,10 @@ async function createDataFile(filename, dest, force, dataFileContent) {
   }
   if (isFileExists && !force) {
     logger.info(`Skipping ${relativeFilePath}`);
-  } else {
-    // continue only if file not already exists, or '--force' option provided
+  } else { // continue only if file not already exists, or '--force' option provided
     if (dataFileContent && dataFileContent.length) {
-      if (!await hasAccess(dest)) {
-        await mkdir(dest, {recursive: true});
+      if (!await hasAccess(path)) {
+        await mkdir(path, {recursive: true});
       }
       await writeFile(filename, dataFileContent);
       isFileExists ? logger.info(`Overwriting ${relativeFilePath}`) : logger.info(`Creating ${relativeFilePath}`);
@@ -237,20 +259,11 @@ async function createDataFile(filename, dest, force, dataFileContent) {
  */
 function prepareDataFileContent(entity, entitySql) {
   const data = [];
-  for (const [key, element] of Object.entries(entitySql.elements)) {
-    let entityElement = entity.elements[key];
-    if (!entityElement) {
+  for (const [key, element] of Object.entries(entity.elements)) {
+    if (!isElementSupported(element, entitySql.elements[key])) {
       continue;
     }
-    if (!element?.['@cds.persistence.name']) {
-      continue;
-    }
-    if (element.type === 'cds.Association' || element.type === 'cds.Composition') {
-      continue;
-      entityElement = entityElement.foreignKeys[element.keys[0]['as']];
-    }
-    console.log(key, entityElement.name);
-    const localdata = generateData(entityElement);
+    const localdata = generateData(element);
     for (let i = 0; i < TOTAL_ROWS; i++) {
       if (!data[i]) {
         data[i] = {};
@@ -261,6 +274,11 @@ function prepareDataFileContent(entity, entitySql) {
   return json2csv(data);
 }
 
+/**
+ * Generate mock data for entity
+ * @param {object} entityElement
+ * @returns {object[]}
+ */
 function generateData(entityElement) {
   let localdata = [];
   if (entityElement.key) {
@@ -303,4 +321,20 @@ function getNamespace(csn, artifactName) {
   return artifactName;
 }
 
-// module.exports = mockdataPlugin;
+/**
+ * Get filename
+ * @param {cds.entity} entity
+ * @param {string} namespace
+ * @param {string} path
+ * @returns {string}
+ */
+function getFilename(entity, namespace, path) {
+  let filename = '';
+  if (!namespace || namespace === entity.name) {
+    filename = `${entity.name}.csv`;
+  } else {
+    const entityName = entity.name.replace(namespace + '.', '');
+    filename = `${namespace}-${entityName}.csv`;
+  }
+  return join(path, filename);
+}
