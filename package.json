@@ -1,6 +1,6 @@
 {
   "name": "cap-js-mockdata",
-  "version": "1.0.0",
+  "version": "0.0.2",
   "description": "SAP CAP plugin to generate mock data.",
   "author": "Mauricio Lauffer",
   "license": "MIT",

@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@sap/cds": "^7.8.1",
-    "cap-js-mockdata": "^0.0.1"
+    "cap-js-mockdata": "*"
   },
   "devDependencies": {
     "@cap-js/sqlite": "^1.6.0"
