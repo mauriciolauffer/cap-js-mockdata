@@ -6,7 +6,7 @@
     "add": "cds add mockdata"
   },
   "dependencies": {
-    "@sap/cds": "^7.8.1",
+    "@sap/cds": ">=7",
     "cap-js-mockdata": "*"
   },
   "devDependencies": {

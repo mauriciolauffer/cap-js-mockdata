@@ -44,7 +44,7 @@
     "vitest": "^1.2.2"
   },
   "peerDependencies": {
-    "@sap/cds": "^7.8.1"
+    "@sap/cds": ">=7"
   },
   "repository": {
     "type": "git",
