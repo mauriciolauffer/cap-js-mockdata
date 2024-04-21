@@ -1,4 +1,4 @@
-using {validatorplugin.test.db as db} from './schema';
+using {mockdataplugin.test.db as db} from './schema';
 
 annotate db.TestingAnnotation with {
   name       @Mockdata: {person: 'fullName'};

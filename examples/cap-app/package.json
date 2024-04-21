@@ -6,18 +6,13 @@
     "add": "cds add mockdata"
   },
   "dependencies": {
-    "@sap/cds": "^7.8.1",
+    "@sap/cds": ">=7",
     "cap-js-mockdata": "*"
   },
   "devDependencies": {
     "@cap-js/sqlite": "^1.6.0"
   },
   "cds": {
-    "requires": {},
-    "log": {
-      "levels": {
-        "validator-plugin": "error"
-      }
-    }
+    "requires": {}
   }
 }

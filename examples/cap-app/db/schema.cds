@@ -1,4 +1,4 @@
-namespace validatorplugin.test.db;
+namespace mockdataplugin.test.db;
 
 using {
   cuid,

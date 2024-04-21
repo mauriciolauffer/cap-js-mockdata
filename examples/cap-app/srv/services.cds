@@ -1,6 +1,6 @@
-using {validatorplugin.test.db as db} from '../db/schema';
+using {mockdataplugin.test.db as db} from '../db/schema';
 
-service ValidatorPluginService {
+service MockdataPluginService {
   entity TestingAnnotation   as projection on db.TestingAnnotation;
   entity TestingNoAnnotation as projection on db.TestingNoAnnotation;
   entity TestingAssociation  as projection on db.TestingAssociation;
@@ -11,4 +11,4 @@ service ValidatorPluginService {
   entity TestingVirtual      as projection on db.TestingVirtual;
 };
 
-annotate ValidatorPluginService.TestingDraft with @odata.draft.enabled;
+annotate MockdataPluginService.TestingDraft with @odata.draft.enabled;
