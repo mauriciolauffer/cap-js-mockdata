@@ -13,11 +13,6 @@
     "@cap-js/sqlite": "^1.6.0"
   },
   "cds": {
-    "requires": {},
-    "log": {
-      "levels": {
-        "validator-plugin": "error"
-      }
-    }
+    "requires": {}
   }
 }
